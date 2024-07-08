@@ -1,4 +1,5 @@
 ﻿using Backend.Context;
+using Backend.Helpers;
 using Backend.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +15,7 @@ namespace Backend.Controllers
         private readonly AppDbContext _authContext;
         public UserController(AppDbContext appDbContext)
         {
-            _authContext = appDbContext;
+            _authContext = appDbContext;    
         }
 
         [HttpPost("authenticate")]
@@ -39,6 +40,9 @@ namespace Backend.Controllers
             {
                 return BadRequest();
             }
+            userObj.Password = PasswordHasher.HashPassword(userObj.Password);
+            userObj.Role = "User";
+            userObj.Token = "";
             await _authContext.Users.AddAsync(userObj);
             await _authContext.SaveChangesAsync();
             return Ok(new
