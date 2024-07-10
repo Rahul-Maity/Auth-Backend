@@ -153,5 +153,12 @@ namespace Backend.Controllers
 
             return JwtTokenHandler.WriteToken(token);
         }
+
+
+        [HttpGet]
+        public async Task<ActionResult<User>> GetAllUsers()
+        {
+            return Ok(await _authContext.Users.ToListAsync());
+        }
     }
 }
