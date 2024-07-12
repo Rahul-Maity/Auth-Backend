@@ -22,23 +22,23 @@ namespace Backend.Controllers
 
         private readonly AppDbContext _authContext;
         private readonly IConfiguration _configuration;
-        public UserController(AppDbContext appDbContext,IConfiguration configuration)
+        public UserController(AppDbContext appDbContext, IConfiguration configuration)
         {
-            _authContext = appDbContext;    
+            _authContext = appDbContext;
             _configuration = configuration;
         }
 
         [HttpPost("authenticate")]
-        public async Task<IActionResult> Authenticate([FromBody]User userObj)
+        public async Task<IActionResult> Authenticate([FromBody] User userObj)
         {
-            if(userObj == null)
+            if (userObj == null)
             {
                 return BadRequest();
             }
-            var user = await _authContext.Users.FirstOrDefaultAsync(x => x.Username == userObj.Username );
-            if(user == null) { return NotFound(new { message = "User Not Found" }); }
+            var user = await _authContext.Users.FirstOrDefaultAsync(x => x.Username == userObj.Username);
+            if (user == null) { return NotFound(new { message = "User Not Found" }); }
 
-            if(!PasswordHasher.VerifyPassword(userObj.Password, user.Password))
+            if (!PasswordHasher.VerifyPassword(userObj.Password, user.Password))
             {
                 return BadRequest(new { message = "Password is incorrect" });
             }
@@ -55,21 +55,21 @@ namespace Backend.Controllers
                     refreshToken = newRefreshToken
                 }
 
-                
+
                 );
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> RegisterUser([FromBody]User userObj)
+        public async Task<IActionResult> RegisterUser([FromBody] User userObj)
         {
-            if(userObj ==null)
+            if (userObj == null)
             {
                 return BadRequest();
             }
 
 
             //check username 
-            if(await CheckUsernameExistAsync(userObj.Username))
+            if (await CheckUsernameExistAsync(userObj.Username))
             {
                 return BadRequest(new { message = "Username already exist" });
             }
@@ -85,7 +85,7 @@ namespace Backend.Controllers
 
             //check password strength
             var pass = CheckPasswordStrength(userObj.Password);
-            if(!string.IsNullOrEmpty(pass))
+            if (!string.IsNullOrEmpty(pass))
             {
                 return BadRequest(new { message = pass.ToString() });
             }
@@ -107,24 +107,24 @@ namespace Backend.Controllers
             //throw new NotImplementedException();
 
             StringBuilder sb = new StringBuilder();
-            if(password.Length <8)
+            if (password.Length < 8)
             {
-                sb.Append("Minimum password length should be 8"+Environment.NewLine);
-               
+                sb.Append("Minimum password length should be 8" + Environment.NewLine);
+
             }
             if (!(Regex.IsMatch(password, "[a-z]") && Regex.IsMatch(password, "[A-Z]") && Regex.IsMatch(password, "[0-9]")))
             {
                 sb.Append("Password should be alphanumeric" + Environment.NewLine);
             }
 
-            if(Regex.IsMatch(password, "[@, ., !, #, $, %, ^, &, *, (, ), +, =, {, }, [, ], :, ;, \", <, >, ,, ?, /, \\\\, |, `, ~ ]"))
+            if (Regex.IsMatch(password, "[@, ., !, #, $, %, ^, &, *, (, ), +, =, {, }, [, ], :, ;, \", <, >, ,, ?, /, \\\\, |, `, ~ ]"))
             {
-                sb.Append("Password should contain special char" +  Environment.NewLine);
+                sb.Append("Password should contain special char" + Environment.NewLine);
             }
             return sb.ToString();
         }
 
-        private async Task<bool>CheckUsernameExistAsync(string username)
+        private async Task<bool> CheckUsernameExistAsync(string username)
         {
             return await _authContext.Users.AnyAsync(x => x.Username == username);
 
@@ -178,7 +178,7 @@ namespace Backend.Controllers
             var tokenBytes = RandomNumberGenerator.GetBytes(64);
             var refreshToken = Convert.ToBase64String(tokenBytes);
             var tokenInUser = _authContext.Users
-                .Any( a => a.RefreshToken == refreshToken );
+                .Any(a => a.RefreshToken == refreshToken);
             if (tokenInUser)
             {
                 return createRefreshToken();
@@ -201,11 +201,11 @@ namespace Backend.Controllers
             };
             var tokenHandler = new JwtSecurityTokenHandler();
             SecurityToken securityToken;
-            var principle = tokenHandler.ValidateToken(token,tokenValidationParameters,out securityToken);
+            var principle = tokenHandler.ValidateToken(token, tokenValidationParameters, out securityToken);
 
             var jwtSecurityToken = securityToken as JwtSecurityToken;
 
-            if(jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256,StringComparison.InvariantCultureIgnoreCase))
+            if (jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
             {
                 throw new SecurityTokenException("Invalid Token");
             }
@@ -213,6 +213,40 @@ namespace Backend.Controllers
 
 
         }
+
+
+        [HttpPost("refreshToken")]
+        public async Task<IActionResult> RefreshToken(TokenApiDto tokenApiDto)
+        {
+            if(tokenApiDto is null)
+            {
+                return BadRequest("Invalid client request");
+            }
+            string accessToken = tokenApiDto.accessToken;
+            string refreshToken = tokenApiDto.refreshToken;
+            var principle = GetPrincipleFromExpiredToken(accessToken);
+            var username = principle.Identity.Name;
+            var user = await _authContext.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if(user is null || user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime <= DateTime.Now)
+            {
+                return BadRequest("Invalid request");
+            }
+
+            var newAccessToken = CreateJwtToken(user);
+            var newRefreshToken = createRefreshToken();
+            user.RefreshToken = newRefreshToken;
+            await _authContext.SaveChangesAsync();
+            return Ok(
+                new TokenApiDto()
+                {
+                    accessToken = newAccessToken,
+                    refreshToken = newRefreshToken,
+                }
+              );
+
+        }
+
+       
 
 
     }
