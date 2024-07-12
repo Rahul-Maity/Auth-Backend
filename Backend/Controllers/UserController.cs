@@ -1,12 +1,15 @@
 ﻿using Backend.Context;
 using Backend.Helpers;
 using Backend.Models;
+using Backend.Models.Dto;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -40,12 +43,19 @@ namespace Backend.Controllers
                 return BadRequest(new { message = "Password is incorrect" });
             }
             user.Token = CreateJwtToken(user);
+            var newAccessToken = user.Token;
+            var newRefreshToken = createRefreshToken();
+            user.RefreshToken = newRefreshToken;
+            await _authContext.SaveChangesAsync();
 
             return Ok(
+                new TokenApiDto()
+                {
+                    accessToken = newAccessToken,
+                    refreshToken = newRefreshToken
+                }
 
-                new {
-                    Token = user.Token,
-                    message = "Login success" }
+                
                 );
         }
 
@@ -135,7 +145,7 @@ namespace Backend.Controllers
             var identity = new ClaimsIdentity(new Claim[]
             {
                 new Claim(ClaimTypes.Role, user.Role),
-                new Claim(ClaimTypes.Name, $"{user.Firstname} {user.Lastname}")
+                new Claim(ClaimTypes.Name, $"{user.Username}")
 
             });
 
@@ -156,9 +166,54 @@ namespace Backend.Controllers
 
 
         [HttpGet]
+        [Authorize]
         public async Task<ActionResult<User>> GetAllUsers()
         {
             return Ok(await _authContext.Users.ToListAsync());
         }
+
+
+        private string createRefreshToken()
+        {
+            var tokenBytes = RandomNumberGenerator.GetBytes(64);
+            var refreshToken = Convert.ToBase64String(tokenBytes);
+            var tokenInUser = _authContext.Users
+                .Any( a => a.RefreshToken == refreshToken );
+            if (tokenInUser)
+            {
+                return createRefreshToken();
+            }
+            return refreshToken;
+        }
+
+        private ClaimsPrincipal GetPrincipleFromExpiredToken(string token)
+        {
+
+            var secret_key = _configuration["JWT:secret_key"];
+            var key = Encoding.ASCII.GetBytes(secret_key);
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateLifetime = false
+            };
+            var tokenHandler = new JwtSecurityTokenHandler();
+            SecurityToken securityToken;
+            var principle = tokenHandler.ValidateToken(token,tokenValidationParameters,out securityToken);
+
+            var jwtSecurityToken = securityToken as JwtSecurityToken;
+
+            if(jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256,StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new SecurityTokenException("Invalid Token");
+            }
+            return principle;
+
+
+        }
+
+
     }
 }
