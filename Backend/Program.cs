@@ -1,4 +1,5 @@
 using Backend.Context;
+using Backend.UtilityService;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,8 @@ builder.Services.AddCors(options =>
     });
 });
 
+
+builder.Services.AddScoped<IEmailService,EmailService>();
 builder.Services.AddAuthentication(x =>
 {
     x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
